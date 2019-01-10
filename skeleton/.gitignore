@@ -1,0 +1,24 @@
+
+# my127-harness - Directories
+/.my127ws
+/.github/
+/bin/
+
+# my127-harness - Files
+/.dockerignore
+/docker-sync.yml
+/phpcs.xml
+/phpmd.xml
+/behat.yml
+/workspace.override.yml
+
+# Spryker - Ignore directories generated
+/app
+/src/Generated
+/vendor/
+/.docker-sync
+/ocaml-4.06.0/
+/node_modules/
+
+# Spryker - Ignore .env files as they are personal
+/.env

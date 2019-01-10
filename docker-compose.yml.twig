@@ -1,0 +1,176 @@
+{% set dockersync = false %}
+{% if @('host.os') == 'darwin' and @('docker-sync') == 'yes' %}
+{% set dockersync = true %}
+{% endif %}
+version: '3'
+services:
+  console:
+{% if @('app.build') == 'dynamic' %}
+    entrypoint: /entrypoint.dynamic.sh
+    volumes:
+      - {{ (dockersync) ? @('workspace.name') ~ '-sync:/app:nocopy' : '../:/app:delegated' }}
+      - ./skeleton:/home/build/skeleton
+{% endif %}
+    labels:
+      - traefik.enable=false
+    build:
+      context: ../
+      dockerfile: .my127ws/docker/image/console/Dockerfile
+    image: {{ @('workspace.name') ~ '-console:dev' }}
+{% if @('app.build') == 'static' %}
+      args:
+        APP_MODE: {{ @('app.mode') }}
+{% endif %}
+    environment: &APP_ENV_VARS
+      SPRYKER_SALT: ${SPRYKER_SALT}
+      HOST_OS_FAMILY: ${HOST_OS_FAMILY}
+      APP_NAME: ${APP_NAME}
+      YVES_HOST: ${YVES_HOST}
+      ZED_HOST: ${ZED_HOST}
+      DB_HOST: ${DB_HOST}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST}
+      ELASTICSEARCH_PORT: ${ELASTICSEARCH_PORT}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_PROTOCOL: ${REDIS_PROTOCOL}
+      RABBITMQ_HOST: ${RABBITMQ_HOST}
+      RABBITMQ_PORT: ${RABBITMQ_PORT}
+      RABBITMQ_API_PORT: ${RABBITMQ_API_PORT}
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST}
+      JENKINS_HOST: ${JENKINS_HOST}
+      JENKINS_PORT: ${JENKINS_PORT}
+      B2B_DEMOSHOP_URL: ${B2B_DEMOSHOP_URL}
+    networks:
+      - private
+    depends_on:
+      - postgres
+      - redis
+      - elasticsearch
+      - rabbitmq
+      - jenkins
+      - jenkins-slave
+  nginx:
+    build: docker/image/nginx
+{% if @('app.build') == 'dynamic' %}
+    volumes:
+      - {{ (dockersync) ? @('workspace.name') ~ '-sync:/app:nocopy' : '../:/app:delegated' }}
+{% endif %}
+    labels:
+      - traefik.backend=${APP_NAME}
+      - traefik.frontend.rule=Host:${YVES_HOST},${ZED_HOST}
+      - traefik.docker.network=my127ws
+      - traefik.port=80
+      - co.elastic.logs/module=nginx
+      - co.elastic.metrics/module=nginx
+    depends_on:
+      - php-fpm
+    networks:
+      - private
+      - shared
+  php-fpm:
+    build: docker/image/php-fpm
+{% if @('app.build') == 'dynamic' %}
+    entrypoint: /entrypoint.dynamic.sh
+    volumes:
+      - {{ (dockersync) ? @('workspace.name') ~ '-sync:/app:nocopy' : '../:/app:delegated' }}
+{% endif %}
+    labels:
+      - traefik.enable=false
+    networks:
+      - private
+      - shared
+    depends_on:
+      - console
+    environment:
+      <<: *APP_ENV_VARS
+  postgres:
+    image: postgres:9.4
+    labels:
+      - traefik.enable=false
+      - co.elastic.logs/module=postgresql
+      - co.elastic.metrics/module=postgresql
+      - co.elastic.metrics/metricsets=["status"]
+      - co.elastic.metrics/hosts=["tcp({{ @('namespace') }}_postgres:5432)/"]
+      - co.elastic.metrics/username=root
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+    networks:
+      - private
+      - shared
+  redis:
+    image: redis:4-alpine
+    labels:
+      - traefik.enable=false
+      - co.elastic.logs/module=redis
+    networks:
+      - private
+  elasticsearch:
+    image: my127/spryker-elasticsearch:latest
+    environment:
+      ES_JAVA_OPTS: "-Xmx512m -Xms512m"
+    labels:
+      - traefik.enable=false
+    networks:
+      - private
+  rabbitmq:
+    image: rabbitmq:3.7-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
+    networks:
+      - private
+    labels:
+      - traefik.enable=false
+  jenkins:
+    image: "jenkins:alpine"
+    environment:
+      JAVA_OPTS: '-Djenkins.install.runSetupWizard=false'
+    networks:
+      - private
+      - shared
+    labels:
+      - traefik.backend=${JENKINS_HOST}
+      - traefik.frontend.rule=Host:${JENKINS_HOST_NAME}
+      - traefik.docker.network=my127ws
+      - traefik.port=${JENKINS_PORT}
+      - co.elastic.logs/module=jenkins
+      - co.elastic.metrics/module=jenkins
+  jenkins-slave:
+    image: {{ @('workspace.name') ~ '-console:dev' }}
+{% if @('app.build') == 'dynamic' %}
+    entrypoint: /entrypoint.jenkins_slave.dynamic.sh
+    volumes:
+      - {{ (dockersync) ? @('workspace.name') ~ '-sync:/app:nocopy' : '../:/app:delegated' }}
+{% else %}
+    entrypoint: /entrypoint.jenkins_slave.sh
+{% endif %}
+    depends_on:
+      - jenkins
+    environment:
+      <<: *APP_ENV_VARS
+      JENKINS_SLAVE_NAME: backend
+      JENKINS_URL: http://${JENKINS_HOST}:${JENKINS_PORT}/
+    networks:
+      - private
+      - shared
+    labels:
+      - traefik.enable=false
+networks:
+  private:
+    external: false
+  shared:
+    external:
+      name: my127ws
+{% if dockersync %}
+volumes:
+  {{ @('workspace.name') }}-sync:
+    external: true
+{% endif %}

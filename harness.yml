@@ -1,0 +1,21 @@
+---
+harness('spryker'):
+  description: A docker based development environment for spryker
+  require:
+    services:
+      - proxy
+    confd:
+      - harness:/
+    attributes:
+      standard:
+        - aws.bucket
+        - app.repository
+      secret:
+        - spryker.salt
+        - aws.id
+        - aws.key
+---
+import:
+  - harness/config/*.yml
+  - harness/attributes/common.yml
+  - harness/attributes/environment/={env('MY127WS_ENV','local')}.yml
