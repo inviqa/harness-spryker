@@ -9,7 +9,7 @@
 FROM {{ @('namespace') }}_console:latest as console
 {% endif %}
 
-FROM my127/spryker:7.2-fpm-alpine
+FROM quay.io/inviqa_images/docker-spryker:7.2-fpm-alpine
 
 COPY root  /
 

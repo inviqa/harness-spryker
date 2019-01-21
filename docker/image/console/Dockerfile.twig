@@ -1,10 +1,9 @@
-# github: https://github.com/my127/docker-spryker-console
-# dockerhub: https://hub.docker.com/r/my127/spryker-console
+# github: https://github.com/inviqa/docker-spryker-console
 # 
 # NOTE: This image is provided to speed up the build time but all
 # the files needed and used are in './root'
 
-FROM my127/spryker-console:7.2-fpm-alpine
+FROM quay.io/inviqa_images/docker-spryker-console:7.2-fpm-alpine
 
 COPY .my127ws/docker/image/console/root /
 
