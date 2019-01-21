@@ -9,5 +9,6 @@ function task_welcome()
     echo "Zed: https://${ZED_HOST}"
     echo "  Username: admin@spryker.com"
     echo "  Password: change123"
+    echo "Jenkins: https://${JENKINS_HOST_NAME}"
     echo ""
 }
