@@ -112,7 +112,7 @@ services:
     networks:
       - private
   elasticsearch:
-    image: my127/spryker-elasticsearch:latest
+    build: docker/image/elasticsearch
     environment:
       ES_JAVA_OPTS: "-Xmx512m -Xms512m"
     labels:
