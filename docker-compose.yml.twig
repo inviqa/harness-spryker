@@ -4,6 +4,20 @@
 {% endif %}
 version: '3'
 services:
+  chrome:
+    build: docker/image/chrome
+    environment:
+      HOST_OS_FAMILY: ${HOST_OS_FAMILY}
+      APP_HOST: ${APP_HOST}
+    labels:
+      - traefik.enable=false
+    networks:
+      private:
+        aliases:
+          - chrome
+      shared:
+        aliases:
+          - {{ @('namespace') }}_chrome
   console:
 {% if @('app.build') == 'dynamic' %}
     entrypoint: /entrypoint.dynamic.sh
@@ -70,8 +84,15 @@ services:
     depends_on:
       - php-fpm
     networks:
-      - private
-      - shared
+      private:
+        aliases:
+          - nginx
+      shared:
+        aliases:
+          - {{ @('namespace') }}_nginx
+      monitoring:
+        aliases:
+          - {{ @('namespace') }}_nginx
   php-fpm:
     build: docker/image/php-fpm
 {% if @('app.build') == 'dynamic' %}
@@ -82,8 +103,12 @@ services:
     labels:
       - traefik.enable=false
     networks:
-      - private
-      - shared
+      private:
+        aliases:
+          - php-fpm
+      monitoring:
+        aliases:
+          - {{ @('namespace') }}_php-fpm
     depends_on:
       - console
     environment:
@@ -102,40 +127,62 @@ services:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASS}
     networks:
-      - private
-      - shared
+      private:
+        aliases:
+          - postgres
+      monitoring:
+        aliases:
+          - {{ @('namespace') }}_postgres
   redis:
     image: redis:4-alpine
     labels:
       - traefik.enable=false
       - co.elastic.logs/module=redis
     networks:
-      - private
+      private:
+        aliases:
+          - redis
+      monitoring:
+        aliases:
+          - {{ @('namespace') }}_redis
   elasticsearch:
     build: docker/image/elasticsearch
     environment:
       ES_JAVA_OPTS: "-Xmx512m -Xms512m"
     labels:
       - traefik.enable=false
+      - co.elastic.logs/module=elasticsearch
+      - co.elastic.metrics/module=elasticsearch
     networks:
-      - private
+      private:
+        aliases:
+          - elasticsearch
+      monitoring:
+        aliases:
+          - {{ @('namespace') }}_elasticsearch
   rabbitmq:
     image: rabbitmq:3.7-management
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
-    networks:
-      - private
     labels:
       - traefik.enable=false
+      - co.elastic.logs/module=rabbitmq
+      - co.elastic.metrics/module=rabbitmq
+      - co.elastic.metrics/metricsets=["node", "queue", "connection"]
+      - co.elastic.metrics/hosts=["tcp({{ @('namespace') }}_rabbitmq:5672)/"]
+    networks:
+      private:
+        aliases:
+          - rabbitmq
+      monitoring:
+        aliases:
+          - {{ @('namespace') }}_rabbitmq
   jenkins:
     image: "jenkins:alpine"
     environment:
       JAVA_OPTS: '-Djenkins.install.runSetupWizard=false'
-    networks:
-      - private
-      - shared
     labels:
       - traefik.backend=${JENKINS_HOST}
       - traefik.frontend.rule=Host:${JENKINS_HOST_NAME}
@@ -143,6 +190,16 @@ services:
       - traefik.port=${JENKINS_PORT}
       - co.elastic.logs/module=jenkins
       - co.elastic.metrics/module=jenkins
+    networks:
+      private:
+        aliases:
+          - jenkins
+      monitoring:
+        aliases:
+          - {{ @('namespace') }}_jenkins
+      shared:
+        aliases:
+          - {{ @('namespace') }}_jenkins
   jenkins-slave:
     image: {{ @('workspace.name') ~ '-console:dev' }}
 {% if @('app.build') == 'dynamic' %}
@@ -158,14 +215,18 @@ services:
       <<: *APP_ENV_VARS
       JENKINS_SLAVE_NAME: backend
       JENKINS_URL: http://${JENKINS_HOST}:${JENKINS_PORT}/
-    networks:
-      - private
-      - shared
     labels:
       - traefik.enable=false
+    networks:
+      private:
+        aliases:
+          - jenkins-slave
 networks:
   private:
     external: false
+  monitoring:
+    external:
+      name: my127ws_monitoring
   shared:
     external:
       name: my127ws
