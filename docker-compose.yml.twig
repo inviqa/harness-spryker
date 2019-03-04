@@ -12,12 +12,8 @@ services:
     labels:
       - traefik.enable=false
     networks:
-      private:
-        aliases:
-          - chrome
-      shared:
-        aliases:
-          - {{ @('namespace') }}_chrome
+      - private
+      - shared
   console:
 {% if @('app.build') == 'dynamic' %}
     entrypoint: /entrypoint.dynamic.sh
@@ -59,15 +55,14 @@ services:
       JENKINS_HOST: ${JENKINS_HOST}
       JENKINS_PORT: ${JENKINS_PORT}
       B2B_DEMOSHOP_URL: ${B2B_DEMOSHOP_URL}
+    links:
+      - elasticsearch:elasticsearch
+      - jenkins:jenkins
+      - postgres:postgres
+      - rabbitmq:rabbitmq
+      - redis:redis
     networks:
       - private
-    depends_on:
-      - postgres
-      - redis
-      - elasticsearch
-      - rabbitmq
-      - jenkins
-      - jenkins-slave
   nginx:
     build: docker/image/nginx
 {% if @('app.build') == 'dynamic' %}
@@ -81,18 +76,12 @@ services:
       - traefik.port=80
       - co.elastic.logs/module=nginx
       - co.elastic.metrics/module=nginx
-    depends_on:
-      - php-fpm
+    links:
+      - php-fpm:php-fpm
     networks:
-      private:
-        aliases:
-          - nginx
-      shared:
-        aliases:
-          - {{ @('namespace') }}_nginx
-      monitoring:
-        aliases:
-          - {{ @('namespace') }}_nginx
+      - private
+      - monitoring
+      - shared
   php-fpm:
     build: docker/image/php-fpm
 {% if @('app.build') == 'dynamic' %}
@@ -102,15 +91,17 @@ services:
 {% endif %}
     labels:
       - traefik.enable=false
-    networks:
-      private:
-        aliases:
-          - php-fpm
-      monitoring:
-        aliases:
-          - {{ @('namespace') }}_php-fpm
     depends_on:
       - console
+    links:
+      - elasticsearch:elasticsearch
+      - jenkins:jenkins
+      - postgres:postgres
+      - rabbitmq:rabbitmq
+      - redis:redis
+    networks:
+      - private
+      - monitoring
     environment:
       <<: *APP_ENV_VARS
   postgres:
@@ -127,24 +118,16 @@ services:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASS}
     networks:
-      private:
-        aliases:
-          - postgres
-      monitoring:
-        aliases:
-          - {{ @('namespace') }}_postgres
+      - private
+      - monitoring
   redis:
     image: redis:4-alpine
     labels:
       - traefik.enable=false
       - co.elastic.logs/module=redis
     networks:
-      private:
-        aliases:
-          - redis
-      monitoring:
-        aliases:
-          - {{ @('namespace') }}_redis
+      - private
+      - monitoring
   elasticsearch:
     build: docker/image/elasticsearch
     environment:
@@ -154,12 +137,8 @@ services:
       - co.elastic.logs/module=elasticsearch
       - co.elastic.metrics/module=elasticsearch
     networks:
-      private:
-        aliases:
-          - elasticsearch
-      monitoring:
-        aliases:
-          - {{ @('namespace') }}_elasticsearch
+      - private
+      - monitoring
   rabbitmq:
     image: rabbitmq:3.7-management
     environment:
@@ -173,12 +152,8 @@ services:
       - co.elastic.metrics/metricsets=["node", "queue", "connection"]
       - co.elastic.metrics/hosts=["tcp({{ @('namespace') }}_rabbitmq:5672)/"]
     networks:
-      private:
-        aliases:
-          - rabbitmq
-      monitoring:
-        aliases:
-          - {{ @('namespace') }}_rabbitmq
+      - private
+      - monitoring
   jenkins:
     image: "jenkins:alpine"
     environment:
@@ -190,16 +165,12 @@ services:
       - traefik.port=${JENKINS_PORT}
       - co.elastic.logs/module=jenkins
       - co.elastic.metrics/module=jenkins
+    links:
+      - jenkins-slave:jenkins-slave
     networks:
-      private:
-        aliases:
-          - jenkins
-      monitoring:
-        aliases:
-          - {{ @('namespace') }}_jenkins
-      shared:
-        aliases:
-          - {{ @('namespace') }}_jenkins
+      - private
+      - monitoring
+      - shared
   jenkins-slave:
     image: {{ @('workspace.name') ~ '-console:dev' }}
 {% if @('app.build') == 'dynamic' %}
@@ -218,9 +189,7 @@ services:
     labels:
       - traefik.enable=false
     networks:
-      private:
-        aliases:
-          - jenkins-slave
+      - private
 networks:
   private:
     external: false
