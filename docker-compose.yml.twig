@@ -4,6 +4,16 @@
 {% endif %}
 version: '3'
 services:
+  chrome:
+    build: docker/image/chrome
+    environment:
+      HOST_OS_FAMILY: ${HOST_OS_FAMILY}
+      APP_HOST: ${APP_HOST}
+    labels:
+      - traefik.enable=false
+    networks:
+      - private
+      - shared
   console:
 {% if @('app.build') == 'dynamic' %}
     entrypoint: /entrypoint.dynamic.sh
@@ -45,15 +55,14 @@ services:
       JENKINS_HOST: ${JENKINS_HOST}
       JENKINS_PORT: ${JENKINS_PORT}
       B2B_DEMOSHOP_URL: ${B2B_DEMOSHOP_URL}
+    links:
+      - elasticsearch:elasticsearch
+      - jenkins:jenkins
+      - postgres:postgres
+      - rabbitmq:rabbitmq
+      - redis:redis
     networks:
       - private
-    depends_on:
-      - postgres
-      - redis
-      - elasticsearch
-      - rabbitmq
-      - jenkins
-      - jenkins-slave
   nginx:
     build: docker/image/nginx
 {% if @('app.build') == 'dynamic' %}
@@ -67,10 +76,11 @@ services:
       - traefik.port=80
       - co.elastic.logs/module=nginx
       - co.elastic.metrics/module=nginx
-    depends_on:
-      - php-fpm
+    links:
+      - php-fpm:php-fpm
     networks:
       - private
+      - monitoring
       - shared
   php-fpm:
     build: docker/image/php-fpm
@@ -81,11 +91,17 @@ services:
 {% endif %}
     labels:
       - traefik.enable=false
-    networks:
-      - private
-      - shared
     depends_on:
       - console
+    links:
+      - elasticsearch:elasticsearch
+      - jenkins:jenkins
+      - postgres:postgres
+      - rabbitmq:rabbitmq
+      - redis:redis
+    networks:
+      - private
+      - monitoring
     environment:
       <<: *APP_ENV_VARS
   postgres:
@@ -103,7 +119,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASS}
     networks:
       - private
-      - shared
+      - monitoring
   redis:
     image: redis:4-alpine
     labels:
@@ -111,31 +127,37 @@ services:
       - co.elastic.logs/module=redis
     networks:
       - private
+      - monitoring
   elasticsearch:
     build: docker/image/elasticsearch
     environment:
       ES_JAVA_OPTS: "-Xmx512m -Xms512m"
     labels:
       - traefik.enable=false
+      - co.elastic.logs/module=elasticsearch
+      - co.elastic.metrics/module=elasticsearch
     networks:
       - private
+      - monitoring
   rabbitmq:
     image: rabbitmq:3.7-management
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
       RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST}
-    networks:
-      - private
     labels:
       - traefik.enable=false
+      - co.elastic.logs/module=rabbitmq
+      - co.elastic.metrics/module=rabbitmq
+      - co.elastic.metrics/metricsets=["node", "queue", "connection"]
+      - co.elastic.metrics/hosts=["tcp({{ @('namespace') }}_rabbitmq:5672)/"]
+    networks:
+      - private
+      - monitoring
   jenkins:
     image: "jenkins:alpine"
     environment:
       JAVA_OPTS: '-Djenkins.install.runSetupWizard=false'
-    networks:
-      - private
-      - shared
     labels:
       - traefik.backend=${JENKINS_HOST}
       - traefik.frontend.rule=Host:${JENKINS_HOST_NAME}
@@ -143,6 +165,12 @@ services:
       - traefik.port=${JENKINS_PORT}
       - co.elastic.logs/module=jenkins
       - co.elastic.metrics/module=jenkins
+    links:
+      - jenkins-slave:jenkins-slave
+    networks:
+      - private
+      - monitoring
+      - shared
   jenkins-slave:
     image: {{ @('workspace.name') ~ '-console:dev' }}
 {% if @('app.build') == 'dynamic' %}
@@ -158,14 +186,16 @@ services:
       <<: *APP_ENV_VARS
       JENKINS_SLAVE_NAME: backend
       JENKINS_URL: http://${JENKINS_HOST}:${JENKINS_PORT}/
-    networks:
-      - private
-      - shared
     labels:
       - traefik.enable=false
+    networks:
+      - private
 networks:
   private:
     external: false
+  monitoring:
+    external:
+      name: my127ws_monitoring
   shared:
     external:
       name: my127ws
